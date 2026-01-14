@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Layout } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Leads from './pages/Leads';
+import Reports from './pages/Reports';
 import Login from './pages/Login';
 import Settings from './pages/Settings';
 import LandingPage from './pages/LandingPage';
@@ -18,8 +19,9 @@ export default function App() {
   // New state to control Landing Page vs Login
   const [showLanding, setShowLanding] = useState(true);
 
-  // State to handle deep linking to a specific lead
+  // State to handle deep linking
   const [targetLeadId, setTargetLeadId] = useState<string | null>(null);
+  const [targetReportUserId, setTargetReportUserId] = useState<string | null>(null);
 
   useEffect(() => {
     // Check local storage for session
@@ -58,6 +60,11 @@ export default function App() {
     setCurrentPage('leads');
   };
 
+  const handleViewReport = (userId: string) => {
+      setTargetReportUserId(userId);
+      setCurrentPage('reports');
+  };
+
   // Callback to force refresh user data from DB/Local storage when Profile changes
   const refreshUser = useCallback(() => {
     const updated = db.getCurrentUser();
@@ -65,14 +72,6 @@ export default function App() {
         setUser(updated);
     }
   }, []);
-
-  // Force refresh of app to apply theme changes if triggered from settings
-  const handleThemeChange = () => {
-      // In a real app with context, we'd update context. 
-      // Here, since we modify body class directly in Settings, 
-      // we might just trigger a re-render or let CSS handle it.
-      // The Settings component handles the body class toggle directly.
-  };
 
   if (!isAuthenticated) {
     if (showLanding) {
@@ -104,10 +103,16 @@ export default function App() {
               onClearInitialLead={() => setTargetLeadId(null)} 
             />
           )}
+          {currentPage === 'reports' && (
+            <Reports 
+                initialUserId={targetReportUserId}
+            />
+          )}
           {currentPage === 'settings' && user && (
             <Settings 
                 currentUser={user} 
                 onProfileUpdate={refreshUser} 
+                onViewReport={handleViewReport}
             />
           )}
         </main>

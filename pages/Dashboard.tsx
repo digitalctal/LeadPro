@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../services/mockDb';
 import { FollowUpWithLead, DashboardStats } from '../types';
-import { CheckCircle, Clock, Calendar, Mail, Phone, Users, Sparkles, X, Edit, MoreVertical, ExternalLink, Filter } from 'lucide-react';
+import { CheckCircle, Clock, Calendar, Mail, Phone, Users, Sparkles, X, Edit, MoreVertical, ExternalLink, Filter, Building, Briefcase } from 'lucide-react';
 import { generateFollowUpEmail } from '../services/geminiService';
 
 interface DashboardProps {
@@ -100,6 +100,21 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onViewLead }) => {
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
+      {/* Welcome & Scope Header */}
+      {stats && (
+          <div className="flex items-center gap-2 mb-2">
+             {stats.scope === 'Company' ? <Building className="h-5 w-5 text-primary" /> : 
+              stats.scope === 'Team' ? <Users className="h-5 w-5 text-primary" /> : 
+              <Briefcase className="h-5 w-5 text-primary" />}
+             <h2 className="text-xl font-bold text-textPrimary">
+                 {stats.scope} Dashboard
+             </h2>
+             <span className="text-sm text-textSecondary border-l border-borderSoft pl-2 ml-2">
+                 {stats.scope === 'Company' ? 'Overview of all teams' : stats.scope === 'Team' ? 'Team performance' : 'My Tasks'}
+             </span>
+          </div>
+      )}
+
       {/* Stats Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div onClick={() => onNavigate('leads')} className="cursor-pointer transform transition-transform hover:scale-[1.02]">

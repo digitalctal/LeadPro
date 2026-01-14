@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Users, Settings, PhoneOutgoing } from 'lucide-react';
+import { LayoutDashboard, Users, Settings, PhoneOutgoing, BarChart3 } from 'lucide-react';
 
 interface SidebarProps {
   currentPage: string;
@@ -10,6 +10,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'leads', label: 'Leads', icon: Users },
+    { id: 'reports', label: 'Reports', icon: BarChart3 },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 

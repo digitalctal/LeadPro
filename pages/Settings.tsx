@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { User, Key, Save, Bell, Shield, Users, Mail, MessageCircle, CheckCircle, AlertTriangle, Palette, Layout } from 'lucide-react';
-import { User as UserType } from '../types';
+import { User, Key, Save, Bell, Shield, Users, Mail, MessageCircle, CheckCircle, AlertTriangle, Palette, CreditCard, Trash2, Edit2, BarChart3, X } from 'lucide-react';
+import { User as UserType, UserRole, PlanTier } from '../types';
 import { db } from '../services/mockDb';
 
 interface SettingsProps {
     currentUser: UserType;
     onProfileUpdate: () => void;
+    onViewReport: (userId: string) => void;
 }
 
-export default function Settings({ currentUser, onProfileUpdate }: SettingsProps) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'team' | 'integrations' | 'notifications'>('profile');
+export default function Settings({ currentUser, onProfileUpdate, onViewReport }: SettingsProps) {
+  const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'team' | 'integrations' | 'notifications' | 'billing'>('profile');
   
   // Profile State
   const [profile, setProfile] = useState({ name: currentUser.name, email: currentUser.email });
@@ -19,7 +20,10 @@ export default function Settings({ currentUser, onProfileUpdate }: SettingsProps
   
   // Team State (Admin only)
   const [teamMembers, setTeamMembers] = useState<UserType[]>([]);
-  const [newMember, setNewMember] = useState({ name: '', email: '' });
+  const [newMember, setNewMember] = useState({ name: '', email: '', role: 'member' as UserRole, teamId: '' });
+  
+  // Edit Member State
+  const [editingMember, setEditingMember] = useState<UserType | null>(null);
 
   // Integrations State
   const [integrations, setIntegrations] = useState({
@@ -51,14 +55,14 @@ export default function Settings({ currentUser, onProfileUpdate }: SettingsProps
     const savedTheme = localStorage.getItem('lt_theme') || 'default';
     setCurrentTheme(savedTheme);
 
-    // Load Team
-    if (currentUser.role === 'admin') {
+    // Load Team if permitted
+    if (currentUser.role === 'company_admin' || currentUser.role === 'team_admin') {
         refreshTeam();
     }
   }, [currentUser]);
 
   const refreshTeam = () => {
-      setTeamMembers(db.getTeamMembers(currentUser.organization));
+      setTeamMembers(db.getManagedUsers(currentUser));
   };
 
   const handleProfileSave = (e: React.FormEvent) => {
@@ -77,12 +81,39 @@ export default function Settings({ currentUser, onProfileUpdate }: SettingsProps
   const handleAddMember = (e: React.FormEvent) => {
       e.preventDefault();
       try {
-          db.addTeamMember(currentUser, newMember.name, newMember.email);
-          setNewMember({ name: '', email: '' });
+          // If Company Admin adding a member, might need to specify team if not defaulting
+          const teamId = newMember.teamId || (currentUser.role === 'team_admin' ? currentUser.teamId : undefined);
+          
+          db.addTeamMember(currentUser, newMember.name, newMember.email, newMember.role, teamId);
+          setNewMember({ name: '', email: '', role: 'member', teamId: '' });
           refreshTeam();
-          alert('Team member added!');
+          alert('User added successfully!');
       } catch (err: any) {
           alert(err.message);
+      }
+  };
+
+  const handleEditMemberSave = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!editingMember) return;
+      try {
+          db.updateUser(editingMember);
+          setEditingMember(null);
+          refreshTeam();
+          alert('User updated successfully!');
+      } catch (err: any) {
+          alert(err.message);
+      }
+  };
+
+  const handleDeleteMember = (id: string) => {
+      if(confirm('Are you sure you want to remove this user?')) {
+          try {
+              db.deleteUser(currentUser, id);
+              refreshTeam();
+          } catch (e: any) {
+              alert(e.message);
+          }
       }
   };
 
@@ -98,33 +129,15 @@ export default function Settings({ currentUser, onProfileUpdate }: SettingsProps
             const permission = await Notification.requestPermission();
             if (permission === 'granted') {
                 setNotifyEnabled(true);
-                try {
-                    new Notification("Notifications Enabled", { body: "LeadTrack Pro will now alert you." });
-                } catch(e) {
-                    alert("Notifications enabled! (Browser system alerts)");
-                }
             } else {
                 alert("Permission denied. Please enable notifications in your browser settings.");
             }
           } catch (e) {
               console.error(e);
-              alert("Could not request permission.");
           }
       } else {
           setNotifyEnabled(false);
-          alert("Notifications disabled in app settings.");
-      }
-  };
-
-  const sendTestNotification = () => {
-      if (Notification.permission === 'granted' && notifyEnabled) {
-          try {
-            new Notification("LeadTrack Pro Test", { body: "This is a test notification." });
-          } catch (e) {
-            alert("Test Notification Sent!");
-          }
-      } else {
-          alert("Please enable notifications above first.");
+          alert("Notifications disabled.");
       }
   };
 
@@ -137,6 +150,28 @@ export default function Settings({ currentUser, onProfileUpdate }: SettingsProps
           document.body.classList.remove('theme-morph');
       }
   };
+
+  const handleUpgradePlan = (plan: PlanTier) => {
+      // Mock upgrade
+      if (confirm(`Switch plan to ${plan}? This will update billing.`)) {
+          let role: UserRole = 'single_user';
+          if (plan === 'company') role = 'company_admin';
+          if (plan === 'team') role = 'team_admin';
+          
+          db.updatePlan(currentUser.id, plan, role);
+          onProfileUpdate();
+          alert(`Upgraded to ${plan} plan!`);
+      }
+  }
+
+  // Calculate Billing
+  const getBillingAmount = () => {
+      if (currentUser.plan === 'single') return 30; // ₹30/mo
+      // Team/Company: Base + user count
+      const count = teamMembers.length + 1; // +1 for self
+      const rate = currentUser.plan === 'company' ? 100 : 50; 
+      return count * rate;
+  }
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -151,11 +186,14 @@ export default function Settings({ currentUser, onProfileUpdate }: SettingsProps
             <button onClick={() => setActiveTab('appearance')} className={`w-full text-left px-4 py-3 rounded-md font-medium transition-colors flex items-center ${activeTab === 'appearance' ? 'bg-primary/10 text-primary' : 'text-textSecondary hover:bg-bgMuted'}`}>
                 <Palette className="h-5 w-5 mr-3" /> Appearance
             </button>
-            {currentUser.role === 'admin' && (
+            {currentUser.role !== 'single_user' && currentUser.role !== 'member' && (
                 <button onClick={() => setActiveTab('team')} className={`w-full text-left px-4 py-3 rounded-md font-medium transition-colors flex items-center ${activeTab === 'team' ? 'bg-primary/10 text-primary' : 'text-textSecondary hover:bg-bgMuted'}`}>
-                    <Users className="h-5 w-5 mr-3" /> Team Management
+                    <Users className="h-5 w-5 mr-3" /> User Management
                 </button>
             )}
+            <button onClick={() => setActiveTab('billing')} className={`w-full text-left px-4 py-3 rounded-md font-medium transition-colors flex items-center ${activeTab === 'billing' ? 'bg-primary/10 text-primary' : 'text-textSecondary hover:bg-bgMuted'}`}>
+                <CreditCard className="h-5 w-5 mr-3" /> Billing & Plan
+            </button>
             <button onClick={() => setActiveTab('integrations')} className={`w-full text-left px-4 py-3 rounded-md font-medium transition-colors flex items-center ${activeTab === 'integrations' ? 'bg-primary/10 text-primary' : 'text-textSecondary hover:bg-bgMuted'}`}>
                 <Shield className="h-5 w-5 mr-3" /> Integrations
             </button>
@@ -176,8 +214,14 @@ export default function Settings({ currentUser, onProfileUpdate }: SettingsProps
                     <div className="p-6">
                         <form onSubmit={handleProfileSave} className="space-y-4 max-w-lg">
                             <div>
-                                <label className="block text-sm font-medium text-textSecondary mb-1">Organization</label>
+                                <label className="block text-sm font-medium text-textSecondary mb-1">Organization / Account</label>
                                 <input disabled type="text" value={currentUser.organization} className="block w-full border border-borderSoft bg-bgMuted rounded-md py-2 px-3 text-textMuted sm:text-sm cursor-not-allowed" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-textSecondary mb-1">Role</label>
+                                <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-primary/10 text-primary uppercase tracking-wide">
+                                    {currentUser.role.replace('_', ' ')}
+                                </div>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-textSecondary mb-1">Display Name</label>
@@ -207,42 +251,15 @@ export default function Settings({ currentUser, onProfileUpdate }: SettingsProps
                         <p className="text-sm text-textSecondary">Customize the look and feel of your dashboard.</p>
                     </div>
                     <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Default Theme Option */}
-                        <div 
-                            onClick={() => changeTheme('default')}
-                            className={`cursor-pointer rounded-lg border-2 overflow-hidden transition-all ${currentTheme === 'default' ? 'border-primary ring-2 ring-primary/20' : 'border-borderSoft hover:border-primary/50'}`}
-                        >
-                            <div className="h-32 bg-[#F9FAFB] relative p-4 flex flex-col gap-2">
-                                <div className="h-2 w-full bg-[#10B981] rounded-full opacity-80"></div>
-                                <div className="flex gap-2">
-                                    <div className="w-1/4 h-20 bg-white border border-gray-200 rounded"></div>
-                                    <div className="w-3/4 h-20 bg-white border border-gray-200 rounded p-2">
-                                        <div className="h-2 w-1/2 bg-gray-200 rounded mb-2"></div>
-                                        <div className="h-2 w-full bg-gray-100 rounded"></div>
-                                    </div>
-                                </div>
-                            </div>
+                        <div onClick={() => changeTheme('default')} className={`cursor-pointer rounded-lg border-2 overflow-hidden transition-all ${currentTheme === 'default' ? 'border-primary ring-2 ring-primary/20' : 'border-borderSoft hover:border-primary/50'}`}>
+                            <div className="h-24 bg-[#F9FAFB] relative p-4"><div className="h-2 w-full bg-[#10B981] rounded-full opacity-80"></div></div>
                             <div className="p-3 bg-bgCard border-t border-borderSoft flex justify-between items-center">
                                 <span className="font-bold text-sm text-textPrimary">Emerald & Orange</span>
                                 {currentTheme === 'default' && <CheckCircle className="h-5 w-5 text-primary" />}
                             </div>
                         </div>
-
-                        {/* Morph Theme Option */}
-                        <div 
-                            onClick={() => changeTheme('morph')}
-                            className={`cursor-pointer rounded-xl border-2 overflow-hidden transition-all ${currentTheme === 'morph' ? 'border-primary ring-2 ring-primary/20' : 'border-borderSoft hover:border-primary/50'}`}
-                        >
-                            <div className="h-32 bg-[#f0f5fa] relative p-4 flex flex-col gap-2 font-sans">
-                                <div className="h-2 w-full bg-[#3788e6] rounded-full opacity-80"></div>
-                                <div className="flex gap-2">
-                                    <div className="w-1/4 h-20 bg-white shadow-sm rounded-lg"></div>
-                                    <div className="w-3/4 h-20 bg-white shadow-sm rounded-lg p-2">
-                                        <div className="h-2 w-1/2 bg-gray-300 rounded-full mb-2"></div>
-                                        <div className="h-2 w-full bg-gray-100 rounded-full"></div>
-                                    </div>
-                                </div>
-                            </div>
+                        <div onClick={() => changeTheme('morph')} className={`cursor-pointer rounded-lg border-2 overflow-hidden transition-all ${currentTheme === 'morph' ? 'border-primary ring-2 ring-primary/20' : 'border-borderSoft hover:border-primary/50'}`}>
+                            <div className="h-24 bg-[#f0f5fa] relative p-4"><div className="h-2 w-full bg-[#3788e6] rounded-full opacity-80"></div></div>
                             <div className="p-3 bg-bgCard border-t border-borderSoft flex justify-between items-center">
                                 <span className="font-bold text-sm text-textPrimary">Morph Blue</span>
                                 {currentTheme === 'morph' && <CheckCircle className="h-5 w-5 text-primary" />}
@@ -252,17 +269,86 @@ export default function Settings({ currentUser, onProfileUpdate }: SettingsProps
                 </div>
             )}
 
-            {/* TEAM TAB */}
-            {activeTab === 'team' && currentUser.role === 'admin' && (
+            {/* BILLING TAB */}
+            {activeTab === 'billing' && (
+                <div className="space-y-6">
+                    <div className="bg-bgCard rounded-md shadow-sm border border-borderSoft overflow-hidden">
+                        <div className="p-6 border-b border-borderSoft flex justify-between">
+                             <div>
+                                <h2 className="text-lg font-bold text-textPrimary">Subscription Plan</h2>
+                                <p className="text-sm text-textSecondary">Current plan: <span className="capitalize font-bold text-primary">{currentUser.plan}</span></p>
+                             </div>
+                             <div className="text-right">
+                                 <p className="text-2xl font-bold text-textPrimary">₹{getBillingAmount()}</p>
+                                 <p className="text-xs text-textSecondary">per month</p>
+                             </div>
+                        </div>
+                        <div className="p-6">
+                            <h3 className="text-sm font-bold text-textPrimary mb-4">Available Plans</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className={`border p-4 rounded-lg flex flex-col justify-between ${currentUser.plan === 'single' ? 'border-primary bg-primary/5' : 'border-borderSoft'}`}>
+                                    <div>
+                                        <h4 className="font-bold">Single User</h4>
+                                        <p className="text-sm text-textSecondary mt-1">₹30 / month</p>
+                                        <p className="text-xs text-textMuted mt-2">Perfect for freelancers.</p>
+                                    </div>
+                                    <button 
+                                        onClick={() => handleUpgradePlan('single')}
+                                        disabled={currentUser.plan === 'single'} 
+                                        className="mt-4 w-full py-2 text-xs font-bold border border-primary text-primary rounded hover:bg-primary hover:text-white disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-primary"
+                                    >
+                                        {currentUser.plan === 'single' ? 'Current Plan' : 'Switch'}
+                                    </button>
+                                </div>
+                                <div className={`border p-4 rounded-lg flex flex-col justify-between ${currentUser.plan === 'team' ? 'border-primary bg-primary/5' : 'border-borderSoft'}`}>
+                                    <div>
+                                        <h4 className="font-bold">Team</h4>
+                                        <p className="text-sm text-textSecondary mt-1">₹50 / user / mo</p>
+                                        <p className="text-xs text-textMuted mt-2">For small sales teams.</p>
+                                    </div>
+                                    <button 
+                                        onClick={() => handleUpgradePlan('team')}
+                                        disabled={currentUser.plan === 'team'} 
+                                        className="mt-4 w-full py-2 text-xs font-bold border border-primary text-primary rounded hover:bg-primary hover:text-white disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-primary"
+                                    >
+                                        {currentUser.plan === 'team' ? 'Current Plan' : 'Upgrade'}
+                                    </button>
+                                </div>
+                                <div className={`border p-4 rounded-lg flex flex-col justify-between ${currentUser.plan === 'company' ? 'border-primary bg-primary/5' : 'border-borderSoft'}`}>
+                                    <div>
+                                        <h4 className="font-bold">Company</h4>
+                                        <p className="text-sm text-textSecondary mt-1">₹100 / user / mo</p>
+                                        <p className="text-xs text-textMuted mt-2">Enterprise administration.</p>
+                                    </div>
+                                    <button 
+                                        onClick={() => handleUpgradePlan('company')}
+                                        disabled={currentUser.plan === 'company'} 
+                                        className="mt-4 w-full py-2 text-xs font-bold border border-primary text-primary rounded hover:bg-primary hover:text-white disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-primary"
+                                    >
+                                        {currentUser.plan === 'company' ? 'Current Plan' : 'Upgrade'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* TEAM TAB (Restricted) */}
+            {activeTab === 'team' && (currentUser.role === 'company_admin' || currentUser.role === 'team_admin') && (
                 <div className="space-y-6">
                     <div className="bg-bgCard rounded-md shadow-sm border border-borderSoft overflow-hidden">
                         <div className="p-6 border-b border-borderSoft flex justify-between items-center">
                             <div>
-                                <h2 className="text-lg font-bold text-textPrimary">Team Members</h2>
-                                <p className="text-sm text-textSecondary">Manage who has access to your organization's data.</p>
+                                <h2 className="text-lg font-bold text-textPrimary">
+                                    {currentUser.role === 'company_admin' ? 'Organization Members' : 'Team Members'}
+                                </h2>
+                                <p className="text-sm text-textSecondary">
+                                    {currentUser.role === 'company_admin' ? 'Manage everyone in the company.' : 'Manage members of your team.'}
+                                </p>
                             </div>
                             <span className="bg-primary/10 text-primary text-xs px-2 py-1 rounded-full font-bold">
-                                {teamMembers.length} Active
+                                {teamMembers.length} Managed Users
                             </span>
                         </div>
                         <div className="divide-y divide-borderSoft">
@@ -275,26 +361,66 @@ export default function Settings({ currentUser, onProfileUpdate }: SettingsProps
                                         <div>
                                             <p className="text-sm font-medium text-textPrimary">{member.name}</p>
                                             <p className="text-sm text-textSecondary">{member.email}</p>
+                                            <p className="text-xs text-textMuted">{member.teamId ? `Team: ${member.teamId}` : 'No Team'}</p>
                                         </div>
                                     </div>
-                                    <span className={`px-2 py-1 text-xs rounded-full font-medium ${member.role === 'admin' ? 'bg-accent/10 text-accent' : 'bg-bgMuted text-textSecondary'}`}>
-                                        {member.role.toUpperCase()}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`px-2 py-1 text-xs rounded-full font-medium bg-bgMuted text-textSecondary mr-2`}>
+                                            {member.role}
+                                        </span>
+                                        <button 
+                                            onClick={() => onViewReport(member.id)} 
+                                            className="text-textSecondary hover:text-primary hover:bg-primary/10 p-1.5 rounded-full transition-colors"
+                                            title="View Work Report"
+                                        >
+                                            <BarChart3 className="h-4 w-4" />
+                                        </button>
+                                        <button 
+                                            onClick={() => setEditingMember(member)} 
+                                            className="text-textSecondary hover:text-accent hover:bg-accent/10 p-1.5 rounded-full transition-colors"
+                                            title="Edit User"
+                                        >
+                                            <Edit2 className="h-4 w-4" />
+                                        </button>
+                                        <button onClick={() => handleDeleteMember(member.id)} className="text-danger hover:bg-danger/10 p-1.5 rounded-full transition-colors">
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
+                                    </div>
                                 </div>
                             ))}
                         </div>
+                        
                         {/* Add Member Form */}
                         <div className="p-6 bg-bgMuted border-t border-borderSoft">
-                            <h3 className="text-sm font-bold text-textPrimary mb-3">Add New Team Member</h3>
-                            <form onSubmit={handleAddMember} className="flex gap-3">
+                            <h3 className="text-sm font-bold text-textPrimary mb-3">Add New Member</h3>
+                            <form onSubmit={handleAddMember} className="grid grid-cols-1 md:grid-cols-4 gap-3">
                                 <input required type="text" placeholder="Name" value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})}
-                                    className="flex-1 border border-borderSoft rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none" />
+                                    className="border border-borderSoft rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none" />
                                 <input required type="email" placeholder="Email" value={newMember.email} onChange={e => setNewMember({...newMember, email: e.target.value})}
-                                    className="flex-1 border border-borderSoft rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none" />
+                                    className="border border-borderSoft rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none" />
+                                
+                                {currentUser.role === 'company_admin' ? (
+                                    <select 
+                                        className="border border-borderSoft rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none"
+                                        value={newMember.role} onChange={e => setNewMember({...newMember, role: e.target.value as UserRole})}
+                                    >
+                                        <option value="member">Member</option>
+                                        <option value="team_admin">Team Admin</option>
+                                    </select>
+                                ) : (
+                                    <div className="flex items-center px-3 text-sm text-textSecondary bg-white border border-borderSoft rounded-md">Role: Member</div>
+                                )}
+
                                 <button type="submit" className="px-4 py-2 bg-textPrimary text-white rounded-md text-sm font-medium hover:bg-black transition-colors">
-                                    Add Member
+                                    Add
                                 </button>
                             </form>
+                            {currentUser.role === 'company_admin' && (
+                                <div className="mt-2">
+                                    <input type="text" placeholder="Assign to Team (Optional ID)" value={newMember.teamId} onChange={e => setNewMember({...newMember, teamId: e.target.value})}
+                                    className="w-full border border-borderSoft rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none" />
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -303,32 +429,6 @@ export default function Settings({ currentUser, onProfileUpdate }: SettingsProps
             {/* INTEGRATIONS TAB */}
             {activeTab === 'integrations' && (
                 <div className="space-y-6">
-                    {/* Gemini API Key */}
-                    <div className="bg-bgCard rounded-md shadow-sm border border-borderSoft overflow-hidden">
-                        <div className="p-6 border-b border-borderSoft">
-                            <h2 className="text-lg font-bold text-textPrimary">AI Configuration</h2>
-                            <p className="text-sm text-textSecondary">Configure Gemini API for smart drafting.</p>
-                        </div>
-                        <div className="p-6">
-                            <form onSubmit={handleApiKeySave} className="flex gap-4 items-end max-w-lg">
-                                <div className="flex-1">
-                                    <label className="block text-sm font-medium text-textSecondary mb-1">Gemini API Key</label>
-                                    <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                            <Key className="h-4 w-4 text-textMuted" />
-                                        </div>
-                                        <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)}
-                                            className="block w-full pl-10 border border-borderSoft rounded-md shadow-sm py-2 px-3 focus:ring-2 focus:ring-primary outline-none sm:text-sm" placeholder="AIza..." />
-                                    </div>
-                                </div>
-                                <button type="submit" className="px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-primaryDark transition-colors">
-                                    Save
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-
-                    {/* Channel Integrations */}
                     <div className="bg-bgCard rounded-md shadow-sm border border-borderSoft overflow-hidden">
                         <div className="p-6 border-b border-borderSoft">
                             <h2 className="text-lg font-bold text-textPrimary">Channel Integrations</h2>
@@ -353,32 +453,13 @@ export default function Settings({ currentUser, onProfileUpdate }: SettingsProps
                                     <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200 ${integrations.email ? 'translate-x-5' : 'translate-x-0'}`} />
                                 </button>
                             </div>
-
-                            {/* WhatsApp */}
-                            <div className="p-6 flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                    <div className="p-3 bg-success/10 rounded-md text-success">
-                                        <MessageCircle className="h-6 w-6" />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-bold text-textPrimary">WhatsApp Business</h3>
-                                        <p className="text-sm text-textSecondary">Send templates and reminders via WhatsApp.</p>
-                                    </div>
-                                </div>
-                                <button 
-                                    onClick={() => toggleIntegration('whatsapp')}
-                                    className={`relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none ${integrations.whatsapp ? 'bg-success' : 'bg-borderSoft'}`}
-                                >
-                                    <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200 ${integrations.whatsapp ? 'translate-x-5' : 'translate-x-0'}`} />
-                                </button>
-                            </div>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* NOTIFICATIONS TAB */}
-            {activeTab === 'notifications' && (
+             {/* NOTIFICATIONS TAB */}
+             {activeTab === 'notifications' && (
                 <div className="bg-bgCard rounded-md shadow-sm border border-borderSoft overflow-hidden">
                     <div className="p-6 border-b border-borderSoft">
                         <h2 className="text-lg font-bold text-textPrimary">Notification Preferences</h2>
@@ -390,7 +471,7 @@ export default function Settings({ currentUser, onProfileUpdate }: SettingsProps
                                 {notifyEnabled ? <CheckCircle className="text-success h-6 w-6" /> : <AlertTriangle className="text-warning h-6 w-6" />}
                                 <div>
                                     <h3 className="font-bold text-textPrimary">Browser Notifications</h3>
-                                    <p className="text-sm text-textSecondary">{notifyEnabled ? "Active. You will be alerted for tasks." : "Disabled. Click to enable system alerts."}</p>
+                                    <p className="text-sm text-textSecondary">{notifyEnabled ? "Active." : "Disabled."}</p>
                                 </div>
                             </div>
                             <button 
@@ -400,18 +481,61 @@ export default function Settings({ currentUser, onProfileUpdate }: SettingsProps
                                 {notifyEnabled ? 'Disable' : 'Enable Permission'}
                             </button>
                         </div>
-                        
-                        {notifyEnabled && (
-                            <div className="flex justify-end">
-                                <button onClick={sendTestNotification} className="text-sm text-primary hover:underline">
-                                    Send Test Notification
-                                </button>
-                            </div>
-                        )}
                     </div>
                 </div>
             )}
         </div>
+
+        {/* EDIT MEMBER MODAL */}
+        {editingMember && (
+            <div className="fixed inset-0 bg-textPrimary/20 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                <div className="bg-bgCard rounded-md max-w-md w-full p-8 shadow-2xl border border-borderSoft">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-xl font-bold text-textPrimary">Edit Team Member</h3>
+                        <button onClick={() => setEditingMember(null)} className="text-textMuted hover:text-textPrimary">
+                            <X className="h-6 w-6" />
+                        </button>
+                    </div>
+                    <form onSubmit={handleEditMemberSave} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-textSecondary mb-1">Name</label>
+                            <input required type="text" value={editingMember.name} onChange={(e) => setEditingMember({...editingMember, name: e.target.value})}
+                                className="block w-full border border-borderSoft rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-textSecondary mb-1">Email</label>
+                            <input required type="email" value={editingMember.email} onChange={(e) => setEditingMember({...editingMember, email: e.target.value})}
+                                className="block w-full border border-borderSoft rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none" />
+                        </div>
+                        
+                        {currentUser.role === 'company_admin' && (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-textSecondary mb-1">Role</label>
+                                    <select 
+                                        className="block w-full border border-borderSoft rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none"
+                                        value={editingMember.role} onChange={e => setEditingMember({...editingMember, role: e.target.value as UserRole})}
+                                    >
+                                        <option value="member">Member</option>
+                                        <option value="team_admin">Team Admin</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-textSecondary mb-1">Team ID</label>
+                                    <input type="text" value={editingMember.teamId || ''} onChange={(e) => setEditingMember({...editingMember, teamId: e.target.value})}
+                                        className="block w-full border border-borderSoft rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none" />
+                                </div>
+                            </>
+                        )}
+                        
+                        <div className="pt-4 flex justify-end gap-3">
+                            <button type="button" onClick={() => setEditingMember(null)} className="px-4 py-2 border border-borderSoft rounded-md text-sm font-medium hover:bg-bgMuted">Cancel</button>
+                            <button type="submit" className="px-4 py-2 bg-primary text-white rounded-md text-sm font-medium hover:bg-primaryDark">Save Changes</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        )}
       </div>
     </div>
   );

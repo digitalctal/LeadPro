@@ -1,15 +1,20 @@
+export type UserRole = 'company_admin' | 'team_admin' | 'member' | 'single_user';
+export type PlanTier = 'single' | 'team' | 'company';
+
 export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'admin' | 'member';
-  organization: string;
+  role: UserRole;
+  plan: PlanTier;
+  organization: string; // Company Name
+  teamId?: string; // For grouping within a company
 }
 
 export interface Lead {
   id: string;
   userId: string;
-  organizationId: string; // Shared by team
+  organizationId: string; // Shared by team/company
   name: string;
   email: string;
   phone: string;
@@ -37,4 +42,5 @@ export interface DashboardStats {
   todayPending: number;
   overdue: number;
   completedToday: number;
+  scope: 'Personal' | 'Team' | 'Company';
 }
