@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LeadTrack Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        /* DEFAULT THEME: Green & Orange */
+        /* Primary: Emerald Green */
+        --primary: 158 64% 52%;      /* #34d399 */
+        --primary-dark: 161 94% 30%; /* #047857 */
+        
+        /* Accent: Burnt Orange */
+        --accent: 25 95% 53%;        /* #f97316 */
+
+        /* Backgrounds */
+        --bg-main: 150 20% 98%;      
+        --bg-card: 0 0% 100%;        
+        --bg-muted: 150 10% 96%;     
+
+        /* Text */
+        --text-primary: 164 50% 10%; 
+        --text-secondary: 164 20% 40%;
+        --text-muted: 164 15% 65%;
+
+        /* Status */
+        --success: 158 64% 52%;      
+        --warning: 38 92% 50%;       
+        --danger: 0 84% 60%;         
+
+        /* Borders & Radius */
+        --border: 150 20% 90%;
+        --radius-sm: 8px;
+        --radius-md: 12px;
+        --radius-lg: 16px;
+      }
+
+      /* MORPH THEME: Soft Blue & Glassy */
+      body.theme-morph {
+        /* Primary: Soft Blue */
+        --primary: 212 100% 48%;     /* #0069d9 approx */
+        --primary-dark: 212 100% 38%;
+        
+        /* Accent: Soft Purple */
+        --accent: 260 60% 60%;
+
+        /* Backgrounds: Light Blue-Grey */
+        --bg-main: 210 29% 97%;      /* #f0f5fa */
+        --bg-card: 0 0% 100%;        /* White cards float on top */
+        --bg-muted: 210 20% 93%;
+
+        /* Text: Dark Blue-Grey */
+        --text-primary: 208 20% 20%;
+        --text-secondary: 208 15% 45%;
+        --text-muted: 208 10% 65%;
+
+        /* Status */
+        --success: 150 60% 45%;
+        --warning: 40 90% 60%;
+        --danger: 350 80% 60%;
+
+        /* Borders & Radius: Softer, Rounder */
+        --border: 210 20% 90%;
+        --radius-sm: 12px;
+        --radius-md: 20px;
+        --radius-lg: 30px;
+      }
+
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: hsl(var(--bg-main));
+        color: hsl(var(--text-primary));
+        transition: background-color 0.3s ease, color 0.3s ease;
+      }
+
+      /* Helper for Morph Shadows if needed */
+      body.theme-morph .shadow-soft {
+        box-shadow: 0 10px 25px -5px rgba(55, 60, 70, 0.08);
+      }
+      body.theme-morph .shadow-glow {
+        box-shadow: 0 0 20px -5px rgba(55, 136, 230, 0.4);
+      }
+
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: hsl(var(--border)); 
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: hsl(var(--text-muted)); 
+      }
+    </style>
+    <script>
+      // Shim process.env for browser environment
+      window.process = {
+        env: {
+          API_KEY: '' 
+        }
+      };
+
+      // Tailwind Config
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: "hsl(var(--primary) / <alpha-value>)",
+              primaryDark: "hsl(var(--primary-dark) / <alpha-value>)",
+              accent: "hsl(var(--accent) / <alpha-value>)",
+
+              bgMain: "hsl(var(--bg-main) / <alpha-value>)",
+              bgCard: "hsl(var(--bg-card) / <alpha-value>)",
+              bgMuted: "hsl(var(--bg-muted) / <alpha-value>)",
+
+              textPrimary: "hsl(var(--text-primary) / <alpha-value>)",
+              textSecondary: "hsl(var(--text-secondary) / <alpha-value>)",
+              textMuted: "hsl(var(--text-muted) / <alpha-value>)",
+
+              success: "hsl(var(--success) / <alpha-value>)",
+              warning: "hsl(var(--warning) / <alpha-value>)",
+              danger: "hsl(var(--danger) / <alpha-value>)",
+
+              borderSoft: "hsl(var(--border) / <alpha-value>)",
+            },
+            borderRadius: {
+              sm: "var(--radius-sm)",
+              md: "var(--radius-md)",
+              lg: "var(--radius-lg)",
+            },
+            boxShadow: {
+              'soft': '0 4px 20px -2px rgba(0, 0, 0, 0.05)',
+              'glow': '0 0 20px -5px hsl(var(--primary) / 0.3)',
+            }
+          }
+        }
+      }
+    </script>
+    <script type="importmap">
+    {
+      "imports": {
+        "react/": "https://esm.sh/react@^19.2.3/",
+        "react": "https://esm.sh/react@^19.2.3",
+        "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+        "@google/genai": "https://esm.sh/@google/genai@^1.35.0",
+        "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+      }
+    }
+    </script>
+  </head>
+  <body class="antialiased">
+    <div id="root"></div>
+  </body>
+</html>
